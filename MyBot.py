@@ -36,7 +36,7 @@ def find_nearest_enemy_direction(square):
     
 def find_nearest_value_square_direction(square):
     direction = NORTH
-    max_distance = min(game_map.width, game_map.height) / 4
+    max_distance = min(game_map.width, game_map.height) / 2
     bestPriority = 999
     for d in (NORTH, EAST, SOUTH, WEST):
         distance = 0
@@ -58,7 +58,7 @@ def get_priority(square):
     if squareProduction == 0:
         squareProduction = 1
     else:
-        squareProduction += 6
+        squareProduction += 8
         
     # priorityRatio is usually around 3 to 25 (lower is better)
     priorityRatio = square.strength / squareProduction
@@ -67,7 +67,6 @@ def get_priority(square):
 
 def assign_move(square):
     shouldGrow = False # weak squares need to grow before moving
-    isBorder = False # border squares don't move unless they have a chance to attack
 
     bestPriorityRatio = 999 # best target (lower is better)
     bestPriorityRatioDirection = None
@@ -81,9 +80,7 @@ def assign_move(square):
             break
 
         # Has player enemy
-        if neighbor.owner != myID and neighbor.owner != 0:
-            isBorder = True
-        
+        if neighbor.owner != myID and neighbor.owner != 0:        
             # Redirect our attack to a player if we haven't already
             if not hasPlayerTarget:
                 bestPriorityRatio = 999
@@ -106,8 +103,6 @@ def assign_move(square):
             
         # Has netural map block
         if neighbor.owner == 0:
-            isBorder = True
-        
             # Only consider attacks that we can take right now
             if square.strength > neighbor.strength:
                 priorityRatio = get_priority(neighbor)
@@ -123,11 +118,11 @@ def assign_move(square):
     if bestPriorityRatioDirection is not None:
         return Move(square, bestPriorityRatioDirection)
     else:
-        # Move towards the closest high priority square.
+        # Move towards the closest high priority square that we don't own.
         nearestBestSquareDirection = find_nearest_value_square_direction(square)
         nextSquare = game_map.get_target(square, nearestBestSquareDirection)
         
-        if (square.strength + nextSquare.strength) <= 255:
+        if (square.strength + nextSquare.strength) <= 305:
             return Move(square, nearestBestSquareDirection)
         else:
             # TODO what to do instead?
