@@ -20,7 +20,10 @@ import random
 # highest priorityRatio
 
 myID, game_map = hlt.get_init()
-hlt.send_init("PythonBot")
+
+# Do map analysis here (up to 15 seconds)
+
+hlt.send_init("johnboronkas")
 
 def find_nearest_enemy_direction(square):
     direction = NORTH
@@ -37,12 +40,16 @@ def find_nearest_enemy_direction(square):
     return direction
 
 def assign_move(square):
-    shouldGrow = False
+    shouldGrow = False # weak squares need to grow before moving
+    isBorder = False # border squares don't move unless they have a chance to attack
 
-    attackDirection = None
-
-    bestPriorityRatio = 999 # best target
+    bestPriorityRatio = 999 # best target (lower is better)
     bestPriorityRatioDirection = None
+    
+    hasPlayerTarget = False # we prioritise player targets over netural targets
+    
+    lowestProductionFriendly = 999 # friendly that needs the most help
+    lowestProductionFriendlyDirection = None
 
     for direction, neighbor in enumerate(game_map.neighbors(square)):
 
@@ -51,38 +58,105 @@ def assign_move(square):
             shouldGrow = True
             break
 
-        # Has enemy
-        if neighbor.owner != myID:
+        # Has player enemy
+        if neighbor.owner != myID and neighbor.owner != 0:
+            isBorder = True
+        
+            # Redirect our attack to a player if we haven't already
+            if not hasPlayerTarget:
+                bestPriorityRatio = 999
+                bestPriorityRatioDirection = None
+                hasPlayerTarget = True
+        
+            # Prioritize squares with any amount of production (0 production squares don't have any return on investment)
             neighborProduction = neighbor.production
             if neighborProduction == 0:
                 neighborProduction = 1
             else:
-                neighborProduction += 6
+                neighborProduction += 5
+                
+            # priorityRatio is usually around 3 to 25 (lower is better)
             priorityRatio = neighbor.strength / neighborProduction
+            
+            # Adjust priorityRatio acording to amount of damage we will do if we attack this square
+            # Most damage we can do is 1020 (255 * 4), so we scale based on that.
+            damage = sum(neighbor.strength for neighbor in game_map.neighbors(square) if neighbor.owner not in (0, myID))
+            
+            # Scale the damage down to priority, then subtract it
+            priorityRatio -= (damage / 10)
+            
             if priorityRatio < bestPriorityRatio:
                 bestPriorityRatio = priorityRatio
                 bestPriorityRatioDirection = direction
+            continue
+            
+        # Has a friendly (fallthrough)
+        if neighbor.owner == myID:
+            # Don't run if we already have a player target
+            if hasPlayerTarget:
+                continue
+                
+            # Support the surrounding square with the lowest production
+            # NEVER allow a move that would cause a combination of 220 ish or more
+            if square.production > neighbor.production and (square.strength + neighbor.strength) <= 220:
+                if neighbor.production < lowestProductionFriendly:
+                    lowestProductionFriendlyDirection = direction
+                    
+            # no continue, fallthrough to next section
+            
+            
+        # Has netural map block
+        if neighbor.owner == 0:
+            isBorder = True
+            
+            # Don't reassign a target if we already have a human target
+            if hasPlayerTarget:
+                continue
+        
+            # Only consider attacks that we can take right now
+            if square.strength > neighbor.strength:
+                neighborProduction = neighbor.production
+                if neighborProduction == 0:
+                    neighborProduction = 1
+                else:
+                    neighborProduction += 5
+                
+                priorityRatio = neighbor.strength / neighborProduction
+                
+                if priorityRatio < bestPriorityRatio:
+                    bestPriorityRatio = priorityRatio
+                    bestPriorityRatioDirection = direction
             continue
 
     if shouldGrow:
         return Move(square, STILL)
 
     if bestPriorityRatioDirection is not None:
-        if game_map.get_target(square, bestPriorityRatioDirection).strength < square.strength:
-            return Move(square, bestPriorityRatioDirection)
-        else:
-            return Move(square, STILL)
+        return Move(square, bestPriorityRatioDirection)
     else:
-        border = any(neighbor.owner != myID for neighbor in game_map.neighbors(square))
-        if not border:
-            return Move(square, find_nearest_enemy_direction(square))
+        # Move towards the closest border if this square isn't on the border
+        # NEVER allow a move that would cause a combination of 220 ish or more
+        if not isBorder:
+            closestDirection = find_nearest_enemy_direction(square)
+            nextSquare = game_map.get_target(square, closestDirection)
+            
+            if (square.strength + nextSquare.strength) <= 220:
+                return Move(square, find_nearest_enemy_direction(square))
+            else:
+                # TODO what to do instead?
+                return Move(square, STILL)
+            
         else:
-            return Move(square, STILL)
+            # On a border but don't have enough strength to attack.
+            # So Move the high production squares towards lower production squares
+            if lowestProductionFriendlyDirection is not None:
+                return Move(square, lowestProductionFriendlyDirection)
 
     return Move(square, STILL)
 
 
 while True:
+    # 1 second per turn
     game_map.get_frame()
     moves = [assign_move(square) for square in game_map if square.owner == myID]
     hlt.send_frame(moves)
