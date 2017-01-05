@@ -69,7 +69,7 @@ def find_nearest_value_square_direction(square):
 
                 #logging.info("before: " + str(currentPriority))
                 #logging.info("dist: " + str(distance))
-                currentPriority += distance * (distance / 3)
+                currentPriority += distance * 3#(distance / 3)
                 #logging.info("after: " + str(currentPriority))
 
                 if currentPriority < bestPriority:
@@ -134,6 +134,8 @@ def assign_move(square):
                 # Iff this square isn't already being attacked
                 if not direction_has_too_much_strength(square, direction):
                     priority -= (damage / (10 - neighborCount))
+                else:
+                    continue
 
                 if priority < bestPriority:
                     bestPriority = priority
